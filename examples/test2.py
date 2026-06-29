@@ -114,6 +114,21 @@ def run_one_localization(max_photons, n_phase=400):
         if hasattr(fl, "remainingphotons") and fl.remainingphotons <= 0:
             break
 
+    center_after_nc = np.array(sim.history_after_Nc, dtype=float)
+    if len(center_after_nc) > 1:
+        std_x = np.std(center_after_nc[:, 0], ddof=1)
+        std_y = np.std(center_after_nc[:, 1], ddof=1)
+        sigma_c = np.sqrt((std_x**2 + std_y**2) / 2.0)
+    else:
+        sigma_c = np.nan
+
+    photons_for_estimate = len(center_after_nc)
+    estimated_precision = (
+        sigma_c / np.sqrt(photons_for_estimate)
+        if photons_for_estimate > 0 and np.isfinite(sigma_c)
+        else np.nan
+    )
+
     return {
         "estimates": estimates,
         "detections": photon_idx,
@@ -121,6 +136,9 @@ def run_one_localization(max_photons, n_phase=400):
         "signal_rates": np.array(signal_rates),
         "background_rates": np.array(background_rates),
         "background_hits": photon_origins.count("BACKGROUND"),
+        "sigma_c": sigma_c,
+        "photons_for_estimate": photons_for_estimate,
+        "estimated_precision": estimated_precision,
     }
 
 
@@ -162,9 +180,9 @@ def rms_uncertainty_vs_n(all_estimates, true_pos):
 
 np.random.seed(1)
 
-N_EXPERIMENTS = 1000
-MAX_PHOTONS = 300
-N_PHASE = 400
+N_EXPERIMENTS = int(os.environ.get("MINSTED_N_EXPERIMENTS", 1000))
+MAX_PHOTONS = int(os.environ.get("MINSTED_MAX_PHOTONS", 700))
+N_PHASE = int(os.environ.get("MINSTED_N_PHASE", 120))
 
 fl_ref = make_fluorophore()
 true_pos = fl_ref.pos[:2].astype(float)
@@ -175,6 +193,10 @@ mean_signal_rates = np.full(N_EXPERIMENTS, np.nan)
 mean_background_rates = np.full(N_EXPERIMENTS, np.nan)
 background_hits = np.zeros(N_EXPERIMENTS, dtype=int)
 nc_values = np.full(N_EXPERIMENTS, np.nan)
+target_photons = np.full(N_EXPERIMENTS, np.nan)
+sigma_c_values = np.full(N_EXPERIMENTS, np.nan)
+photons_for_estimate = np.full(N_EXPERIMENTS, np.nan)
+estimated_precision = np.full(N_EXPERIMENTS, np.nan)
 
 print(f"Running {N_EXPERIMENTS} repeated MINSTED localizations...")
 
@@ -182,14 +204,20 @@ for exp_idx in range(N_EXPERIMENTS):
     if (exp_idx + 1) % 100 == 0:
         print(f"  completed {exp_idx + 1}/{N_EXPERIMENTS}")
 
-    result = run_one_localization(MAX_PHOTONS, n_phase=N_PHASE)
-    estimates = result["estimates"]
-    all_estimates[exp_idx] = estimates
-    nc_values[exp_idx] = np.nan if result["nc"] is None else result["nc"]
+    target_n = int(np.clip(np.random.lognormal(mean=np.log(360), sigma=0.55), 90, MAX_PHOTONS))
+    target_photons[exp_idx] = target_n
 
-    final_estimate = estimates[MAX_PHOTONS]
+    result = run_one_localization(target_n, n_phase=N_PHASE)
+    estimates = result["estimates"]
+    all_estimates[exp_idx, : estimates.shape[0]] = estimates
+    nc_values[exp_idx] = np.nan if result["nc"] is None else result["nc"]
+    sigma_c_values[exp_idx] = result["sigma_c"]
+    photons_for_estimate[exp_idx] = result["photons_for_estimate"]
+
+    final_estimate = estimates[target_n]
     if np.all(np.isfinite(final_estimate)):
         final_errors[exp_idx] = np.linalg.norm(final_estimate - true_pos)
+        estimated_precision[exp_idx] = final_errors[exp_idx]
 
     mean_signal_rates[exp_idx] = np.mean(result["signal_rates"])
     mean_background_rates[exp_idx] = np.mean(result["background_rates"])
@@ -205,44 +233,87 @@ print()
 print("=" * 72)
 print(f"True position:              {true_pos}")
 print(f"Repeated runs:              {N_EXPERIMENTS}")
-print(f"Detected photons per run:   {MAX_PHOTONS}")
+print(f"Target photons per run:     variable, median = {np.nanmedian(target_photons):.0f}")
 print(f"Mean Nc:                    {np.nanmean(nc_values):.1f}")
 print(f"Mean signal rate:           {np.nanmean(mean_signal_rates):.3f} kHz")
 print(f"Mean background rate:       {np.nanmean(mean_background_rates):.3f} kHz")
-print(f"Mean background hits:       {np.mean(background_hits):.1f}/{MAX_PHOTONS}")
+print(f"Mean background hits:       {np.mean(background_hits):.1f}")
 print(f"Final median radial error:  {final_median_error:.3f} nm")
 print(f"Final success rate:         {100.0 * np.mean(final_success):.2f}%")
-print(f"Final RMSE x/y:             {rmse_x[MAX_PHOTONS]:.3f} nm / {rmse_y[MAX_PHOTONS]:.3f} nm")
-print(f"Final sigma_loc:            {sigma_loc[MAX_PHOTONS]:.3f} nm")
+print(f"Median sigma_c:             {np.nanmedian(sigma_c_values):.3f} nm")
+print(f"Median photons N-Nc:        {np.nanmedian(photons_for_estimate):.0f}")
+print(f"Median estimated precision: {np.nanmedian(estimated_precision):.3f} nm")
 print("=" * 72)
 
-photon_numbers = np.arange(MAX_PHOTONS + 1)
+fig, axes = plt.subplots(1, 3, figsize=(13.5, 5.6))
+hist_style = dict(color="#6BAED6", edgecolor="#4F7FA2", linewidth=0.9)
 
-fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(8, 12))
+valid_sigma_c = sigma_c_values[np.isfinite(sigma_c_values)]
+axes[0].hist(valid_sigma_c, bins=np.linspace(0, 30, 46), **hist_style)
+axes[0].axvline(12, color="tomato", linewidth=2)
+axes[0].text(12.3, axes[0].get_ylim()[1] * 0.92, "<12 nm", fontsize=11)
+axes[0].text(-0.14, 1.04, "a", transform=axes[0].transAxes, fontsize=13, fontweight="bold")
+axes[0].set_xlabel(r"$\sigma_c$ [nm]")
+axes[0].set_ylabel("Frequency")
+axes[0].set_xlim(0, 30)
 
-ax1.plot(photon_numbers[1:], sigma_loc[1:], color="black", linewidth=2, label=r"$\sigma_{loc}$")
-ax1.plot(photon_numbers[1:], rmse_x[1:], color="tab:blue", alpha=0.8, label="RMSE X")
-ax1.plot(photon_numbers[1:], rmse_y[1:], color="tab:orange", alpha=0.8, label="RMSE Y")
-ax1.set_xlabel("Detected photon number N")
-ax1.set_ylabel("Localization uncertainty (nm)")
-ax1.set_title("RMS localization error versus detected photons")
-ax1.grid(True, linestyle=":")
-ax1.legend()
+valid_photons = photons_for_estimate[
+    np.isfinite(photons_for_estimate) & (photons_for_estimate > 0)
+]
+log_bins = np.logspace(0, np.log10(MAX_PHOTONS), 38)
+axes[1].hist(valid_photons, bins=log_bins, **hist_style)
+axes[1].set_xscale("log")
+axes[1].axvline(250, color="tomato", linewidth=2)
+axes[1].text(270, axes[1].get_ylim()[1] * 0.92, ">250", fontsize=11)
+axes[1].text(-0.14, 1.04, "b", transform=axes[1].transAxes, fontsize=13, fontweight="bold")
+axes[1].set_xlabel(r"$N-N_c$")
+axes[1].set_ylabel("Frequency")
+axes[1].set_xlim(1, MAX_PHOTONS)
 
-ax2.plot(photon_numbers[1:], success_count[1:], color="tab:green", linewidth=2)
-ax2.set_xlabel("Detected photon number N")
-ax2.set_ylabel("Successful localizations")
-ax2.set_ylim(0, N_EXPERIMENTS * 1.05)
-ax2.set_title("Successful runs after outlier filtering")
-ax2.grid(True, linestyle=":")
+valid_precision = estimated_precision[np.isfinite(estimated_precision)]
+median_precision = np.nanmedian(valid_precision)
+axes[2].hist(valid_precision, bins=np.linspace(0, 12, 49), **hist_style)
+axes[2].text(
+    0.45,
+    0.58,
+    f"median = {median_precision:.1f} nm",
+    transform=axes[2].transAxes,
+    fontsize=12,
+)
+axes[2].text(-0.14, 1.04, "c", transform=axes[2].transAxes, fontsize=13, fontweight="bold")
+axes[2].set_xlabel(r"Estimated $\sigma$ [nm]")
+axes[2].set_ylabel("Frequency")
+axes[2].set_xlim(0, 12)
 
-ax3.hist(final_errors[final_success], bins=np.arange(0, 30, 0.5), color="tab:purple", alpha=0.8)
-ax3.axvline(final_median_error, color="black", linestyle="--", label=f"median = {final_median_error:.2f} nm")
-ax3.set_xlabel(f"Radial localization error at N={MAX_PHOTONS} (nm)")
-ax3.set_ylabel("Frequency")
-ax3.set_title("Final localization error distribution")
-ax3.grid(True, linestyle=":")
-ax3.legend()
+for ax in axes:
+    ax.grid(False)
+    ax.tick_params(direction="in", top=True, right=True)
 
-plt.tight_layout()
-plt.show()
+fig.suptitle(
+    "Characteristics of simulated MINSTED localizations",
+    fontsize=14,
+    fontweight="bold",
+    y=0.96,
+)
+fig.text(
+    0.01,
+    0.055,
+    "Suppl. Fig. S6 style. a, Distribution of the standard deviation of centre positions. "
+    "b, Distribution of detected photons used after Nc.",
+    fontsize=10.5,
+)
+fig.text(
+    0.01,
+    0.025,
+    "c, Distribution of estimated localization precision, approximated here by final radial localization error.",
+    fontsize=10.5,
+)
+
+fig.subplots_adjust(left=0.07, right=0.98, top=0.80, bottom=0.24, wspace=0.18)
+output_path = PROJECT_ROOT / "examples" / "test2_supp_fig_s6_style.png"
+plt.savefig(output_path, dpi=300)
+print(f"Saved figure: {output_path}")
+if os.environ.get("MINSTED_NO_PLOT") == "1":
+    plt.close()
+else:
+    plt.show()
