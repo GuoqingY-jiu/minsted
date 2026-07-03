@@ -172,7 +172,7 @@ class MinstedSimulator:
         # 3. 模拟【绿线】：激发光强分布 (假设激发光轴心与当前扫描位置 s_i 同步)
         # w_ex 是标准共聚焦激发光的束腰半径，通常对应衍射极限 (如 w_ex = 200 nm)
         w_ex = self.d0 / (2 * np.sqrt(2 * np.log(2)))  # 从 FWHM 换算为高斯标准差
-        I_ex = np.exp(-r_sq / (2 * w_ex ** 2))
+        I_ex = np.exp(-(r_sq / (2 * w_ex ** 2)))
 
         # 4. 模拟【红线】：STED 损耗光分布
         # 理想情况下，Doughnut 零点附近的空心光强分布可以用抛物线（二次方）近似
