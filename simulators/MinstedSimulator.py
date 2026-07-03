@@ -149,7 +149,7 @@ class MinstedSimulator:
         return self.localization_estimate.copy()
 
     def get_center_history(self) -> np.ndarray:
-        """Return the raw circular-scan centre trajectory C_i."""
+        """Return the raw circular-scan center trajectory C_i."""
         return np.array(self.trajectory)
 
     def get_history(self) -> np.ndarray:
