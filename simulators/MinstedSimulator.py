@@ -61,6 +61,7 @@ class MinstedSimulator:
         self.d_i = self.d0
         self.R_i = self.d0 * self.R_d
         self.I_i = 0.0
+        self.imax = (self.d0 / self.d_min) ** 2 - 1.0
         self.Nc_reached = False
         self.Nc = None
         self.history_after_Nc = []
@@ -125,7 +126,7 @@ class MinstedSimulator:
         if self.d_i > self.d_min:
             self.d_i = max(self.d_i * self.gamma, self.d_min)
             self.R_i = max(self.R_i * self.gamma, self.r_min)
-            self.I_i = min((self.d0 / self.d_i) ** 2 - 1.0, 38.0)
+            self.I_i = min((self.d0 / self.d_i) ** 2 - 1.0, self.imax)
 
             if self.d_i <= self.d_min and not self.Nc_reached:
                 self.Nc_reached = True
