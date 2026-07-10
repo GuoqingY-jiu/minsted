@@ -396,8 +396,6 @@ print(f'N = 200 precision :         {uncertainty_stats["std_loc"][199]:.3f} nm')
 print(f'N = 200 bias :              {uncertainty_stats["bias_loc"][199]:.3f} nm')
 if np.isfinite(median_subsampled_precision[200]):
     print(f'N = 200 subsampled precision: {median_subsampled_precision[200]:.3f} nm')
-if np.isfinite(median_subsampled_precision_by_neff[200]):
-    print(f'N_eff = 200 subsampled precision: {median_subsampled_precision_by_neff[200]:.3f} nm')
 print("=" * 72)
 
 fig, axes = plt.subplots(1, 3, figsize=(13.5, 5.6))
@@ -537,10 +535,13 @@ print(f"Saved figure: {metrics_output_path}")
 
 precision_output = np.column_stack(
     [
-        neff_values,
-        monte_carlo_std_by_neff[1:],
-        median_subsampled_precision_by_neff[1:],
-        valid_precision_count_by_neff[1:],
+        n_values,
+        median_subsampled_precision,
+        q25_subsampled_precision,
+        q75_subsampled_precision,
+        precision_count_vs_n,
+        uncertainty_stats["std_loc"],
+        uncertainty_stats["rmse_loc"],
     ]
 )
 precision_csv_path = PROJECT_ROOT / "examples" / "test2_subsampled_precision_vs_n.csv"
@@ -549,34 +550,47 @@ np.savetxt(
     precision_output,
     delimiter=",",
     header=(
-        "N_eff,monte_carlo_std_nm,median_subsampled_precision_nm,"
-        "valid_subsampled_localizations"
+        "N,median_subsampled_precision_nm,q25_subsampled_precision_nm,"
+        "q75_subsampled_precision_nm,valid_localizations,true_std_loc_nm,true_rmse_loc_nm"
     ),
     comments="",
 )
 print(f"Saved data: {precision_csv_path}")
 
-valid_monte_carlo_neff = np.isfinite(monte_carlo_std_by_neff[1:])
-valid_subsampled_neff = np.isfinite(median_subsampled_precision_by_neff[1:])
+valid_precision_n = precision_count_vs_n > 0
+first_precision_n = n_values[valid_precision_n][0] if np.any(valid_precision_n) else None
 fig_precision, ax_precision = plt.subplots(figsize=(7.0, 4.6))
 ax_precision.plot(
-    neff_values[valid_monte_carlo_neff],
-    monte_carlo_std_by_neff[1:][valid_monte_carlo_neff],
-    color="black",
-    linewidth=1.8,
-    label="Monte Carlo std",
-)
-ax_precision.plot(
-    neff_values[valid_subsampled_neff],
-    median_subsampled_precision_by_neff[1:][valid_subsampled_neff],
+    n_values[valid_precision_n],
+    median_subsampled_precision[valid_precision_n],
     color="#1f77b4",
     linewidth=2.0,
-    label="median sub-sampling precision",
+    label="subsampled estimate, median",
 )
+ax_precision.fill_between(
+    n_values[valid_precision_n],
+    q25_subsampled_precision[valid_precision_n],
+    q75_subsampled_precision[valid_precision_n],
+    color="#1f77b4",
+    alpha=0.18,
+    linewidth=0.0,
+    label="25-75%",
+)
+ax_precision.plot(
+    n_values[valid_n],
+    uncertainty_stats["std_loc"][valid_n],
+    color="black",
+    linewidth=1.5,
+    linestyle="--",
+    label="simulation std",
+)
+if first_precision_n is not None:
+    ax_precision.axvline(first_precision_n, color="tomato", linewidth=1.4, linestyle=":")
 ax_precision.set_xlim(1, MAX_PHOTONS)
-ax_precision.set_xlabel(r"Effective detected photons $N_\mathrm{eff}=N-N_c+1$")
-ax_precision.set_ylabel(r"$\sigma$ [nm]")
-ax_precision.set_title("Sub-sampling precision validation")
+ax_precision.set_xscale("log")
+ax_precision.set_xlabel("Detected photon number N")
+ax_precision.set_ylabel("Localization precision [nm]")
+ax_precision.set_title("Subsampled individual-localization precision")
 ax_precision.grid(True, linestyle=":", linewidth=0.8, alpha=0.7)
 ax_precision.tick_params(direction="in", top=True, right=True)
 ax_precision.legend(frameon=False)
