@@ -66,7 +66,7 @@ def sample_next_photon(sim, fl, current_time, n_phase=400):
     return photon_time, s_i, origin, signal_i, background_i, total_i
 
 
-np.random.seed(1)
+# np.random.seed(1)
 
 fl = FlStatic()
 fl.pos = [10.0, 0.0]
@@ -87,7 +87,6 @@ current_time = 0.0
 initial_c0 = np.random.normal(loc=0.0, scale=60.0, size=2)
 sim.reset_tracker(r0_est=initial_c0)
 
-estimated_positions = [sim.C_i.copy()]
 photon_arrival_times = []
 photon_origins = []
 signal_rates = []
@@ -108,7 +107,6 @@ for _ in range(max_photons):
 
     sim.register_one_photon(s_i=s_i_actual, origin=origin)
 
-    estimated_positions.append(sim.C_i.copy())
     photon_arrival_times.append(current_time)
     photon_origins.append(origin)
     signal_rates.append(signal_i)
@@ -118,23 +116,26 @@ for _ in range(max_photons):
     if hasattr(fl, "remainingphotons") and fl.remainingphotons <= 0:
         break
 
+# est_pos = sim.get_history()
+est_pos = sim.get_center_history()
+
 if sim.Nc_reached and len(sim.history_after_Nc) > 1:
     stable_trace = np.array(sim.history_after_Nc)
-    start_stable_idx = len(estimated_positions) - len(stable_trace)
+    start_stable_idx = len(est_pos) - len(stable_trace)
 else:
-    start_stable_idx = int(len(estimated_positions) * 0.5)
-    stable_trace = np.array(estimated_positions)[start_stable_idx:]
+    start_stable_idx = int(len(est_pos) * 0.5)
+    stable_trace = est_pos[start_stable_idx:]
 
 total_std_x = np.std(stable_trace[:, 0], ddof=1)
 total_std_y = np.std(stable_trace[:, 1], ddof=1)
-final_estimated_pos = np.mean(stable_trace, axis=0)
+final_estimated_pos = sim.get_localization_estimate()
 background_count = photon_origins.count("BACKGROUND")
 
 print()
 print("=" * 64)
 print(f"Initial estimate: {initial_c0}")
 print(f"True position:    {fl.pos[:2]}")
-print(f"Final mean pos:   {final_estimated_pos}")
+print(f"Final pos:   {final_estimated_pos}")
 print(f"Stable photons:   {len(stable_trace)} from photon index {start_stable_idx}")
 print(f"Stable STD x/y:   {total_std_x:.3f} nm / {total_std_y:.3f} nm")
 print(f"Mean signal rate: {np.mean(signal_rates):.3f} kHz")
@@ -143,23 +144,22 @@ print(f"Mean total rate:  {np.mean(total_rates):.3f} kHz")
 print(f"Background hits:  {background_count}/{len(photon_origins)}")
 print("=" * 64)
 
-est_pos = np.array(estimated_positions)
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
 
-ax1.plot(est_pos[:, 0], label="Estimated X", color="blue", alpha=0.8)
+ax1.plot(est_pos[:, 0], label="Localization Center X", color="blue", alpha=0.8)
 ax1.axhline(y=fl.pos[0], color="red", linestyle="--", label="True X")
-ax1.plot(est_pos[:, 1], label="Estimated Y", color="teal", alpha=0.8)
+ax1.plot(est_pos[:, 1], label="Localization Center Y", color="teal", alpha=0.8)
 ax1.axhline(y=fl.pos[1], color="green", linestyle="--", label="True Y")
 ax1.axvspan(
     start_stable_idx,
-    len(estimated_positions),
+    len(est_pos),
     color="khaki",
     alpha=0.3,
     label=f"Stable phase, std=({total_std_x:.1f}, {total_std_y:.1f}) nm",
 )
 ax1.set_xlabel("Detected photon number")
 ax1.set_ylabel("Position (nm)")
-ax1.set_title("MINSTED localization trace")
+ax1.set_title("MINSTED localization Center trace")
 ax1.legend(loc="upper right")
 ax1.grid(True, linestyle=":")
 

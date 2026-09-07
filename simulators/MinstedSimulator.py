@@ -61,6 +61,7 @@ class MinstedSimulator:
         self.d_i = self.d0
         self.R_i = self.d0 * self.R_d
         self.I_i = 0.0
+        self.imax = (self.d0 / self.d_min) ** 2 - 1.0
         self.Nc_reached = False
         self.Nc = None
         self.history_after_Nc = []
@@ -125,7 +126,7 @@ class MinstedSimulator:
         if self.d_i > self.d_min:
             self.d_i = max(self.d_i * self.gamma, self.d_min)
             self.R_i = max(self.R_i * self.gamma, self.r_min)
-            self.I_i = min((self.d0 / self.d_i) ** 2 - 1.0, 38.0)
+            self.I_i = min((self.d0 / self.d_i) ** 2 - 1.0, self.imax)
 
             if self.d_i <= self.d_min and not self.Nc_reached:
                 self.Nc_reached = True
@@ -149,7 +150,7 @@ class MinstedSimulator:
         return self.localization_estimate.copy()
 
     def get_center_history(self) -> np.ndarray:
-        """Return the raw circular-scan centre trajectory C_i."""
+        """Return the raw circular-scan center trajectory C_i."""
         return np.array(self.trajectory)
 
     def get_history(self) -> np.ndarray:
@@ -172,7 +173,7 @@ class MinstedSimulator:
         # 3. 模拟【绿线】：激发光强分布 (假设激发光轴心与当前扫描位置 s_i 同步)
         # w_ex 是标准共聚焦激发光的束腰半径，通常对应衍射极限 (如 w_ex = 200 nm)
         w_ex = self.d0 / (2 * np.sqrt(2 * np.log(2)))  # 从 FWHM 换算为高斯标准差
-        I_ex = np.exp(-r_sq / (2 * w_ex ** 2))
+        I_ex = np.exp(-(r_sq / (2 * w_ex ** 2)))
 
         # 4. 模拟【红线】：STED 损耗光分布
         # 理想情况下，Doughnut 零点附近的空心光强分布可以用抛物线（二次方）近似
