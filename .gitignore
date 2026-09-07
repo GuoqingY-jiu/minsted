@@ -1,25 +1,40 @@
+
 # Python cache
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # Virtual environments
 .venv/
 venv/
 env/
+ENV/
 
 # Jupyter
 .ipynb_checkpoints/
 
-# PyCharm personal files
-.idea/workspace.xml
-.idea/tasks.xml
-.idea/usage.statistics.xml
-.idea/dictionaries/
-.idea/shelf/
+# IDE/editor local files
+.idea/
+.vscode/
 
-# VS Code local settings, optional
-.vscode/settings.json
+# Build/package outputs
+build/
+dist/
+*.egg-info/
+
+# Local temp/data/artifact folders
+tmp/
+paper/
+projects/
+
+# Generated example outputs
+examples/*.png
+examples/*.csv
 
 # OS files
 .DS_Store
