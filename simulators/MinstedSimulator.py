@@ -1,7 +1,8 @@
 from collections.abc import Callable
-from typing import Dict
 
 import numpy as np
+
+from .gaussian_epsf import gaussian_epsf
 
 try:
     import torch
@@ -18,7 +19,7 @@ class MinstedSimulator:
         n_media: float = 1.518,
         d0: float = 250.0,
         w_ex: float = 120.0,
-        zernike_coeffs: Dict[str, float] | None = None,
+        zernike_coeffs: dict[str, float] | None = None,
         pupil_res: int = 128,
         f_scan: float = 125.0,
         alpha: float = 0.15,
@@ -95,8 +96,8 @@ class MinstedSimulator:
         return self.C_i + offset
 
     def epsf_from_distance_sq(self, r_sq):
-        """Simplified MINSTED E-PSF. d_i is the current FWHM in nm."""
-        return np.exp(-4.0 * np.log(2.0) * r_sq / (self.d_i**2 + 1e-12))
+        """Gaussian MINSTED E-PSF (paper Eq. S5); d_i is the FWHM in nm."""
+        return gaussian_epsf(r_sq, self.d_i)
 
     def detection_rate(self, mol_pos: np.ndarray, s_pos: np.ndarray, brightness: float):
         """Total detected photon rate in kHz: signal plus background."""
@@ -158,31 +159,11 @@ class MinstedSimulator:
         return np.array(self.estimate_trajectory)
 
     def get_effective_psf_coefficient(self, mol_pos: np.ndarray, time_ms: float) -> float:
+        """Return the Gaussian E-PSF at the current scan position.
+
+        Uses the same model as signal_rate, with d_i as the FWHM in nm.
+        This dimensionless coefficient excludes brightness and background.
         """
-        【严格物理叠加】计算分子在当前位置由 激发光高斯轮廓 与 STED Doughnut 轮廓叠加后的有效发射概率（E-PSF）
-        mol_pos: 荧光分子绝对坐标 [x, y]
-        time_ms: 当前仿真物理时间戳
-        返回：有效激发发射效率因子（对应图c中的黄线 E-PSF，范围在 0 ~ 1.0 之间）
-        """
-        # 1. 获取当前微秒 EOD 转到的 Doughnut 绝对中心 s_i
         s_i = self.get_current_eod_position(time_ms)
-
-        # 2. 计算分子到当前 Doughnut 暗核中心的距离平方
         r_sq = np.sum((mol_pos - s_i) ** 2)
-
-        # 3. 模拟【绿线】：激发光强分布 (假设激发光轴心与当前扫描位置 s_i 同步)
-        # w_ex 是标准共聚焦激发光的束腰半径，通常对应衍射极限 (如 w_ex = 200 nm)
-        w_ex = self.d0 / (2 * np.sqrt(2 * np.log(2)))  # 从 FWHM 换算为高斯标准差
-        I_ex = np.exp(-(r_sq / (2 * w_ex ** 2)))
-
-        # 4. 模拟【红线】：STED 损耗光分布
-        # 理想情况下，Doughnut 零点附近的空心光强分布可以用抛物线（二次方）近似
-        # 这里的自适应形状因子随着有效直径 d_i 的收缩变得越来越陡峭
-        shape_factor = r_sq / (self.d_i ** 2 + 1e-12)
-        I_sted_normalized = self.I_i * shape_factor  # 此时单位已经是 Is
-
-        # 5. 【黄线叠加】：根据图 c 公式组合出真正的有效点扩散函数产额
-        # E-PSF = Excitation / (1 + I_sted / Is)
-        e_psf = I_ex / (1.0 + I_sted_normalized)
-
-        return float(e_psf)
+        return float(self.epsf_from_distance_sq(r_sq))

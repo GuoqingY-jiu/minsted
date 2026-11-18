@@ -50,7 +50,7 @@ for step in range(total_steps):
     mol_pos_3d, _ = fl.position(current_time)
     mol_pos_2d = mol_pos_3d[:2]
 
-    # Effective emission coefficient under the current excitation + STED pattern.
+    # Gaussian MINSTED E-PSF, shared with test1/2; d_i is its FWHM in nm.
     eff_psf_coeff = sim.get_effective_psf_coefficient(mol_pos_2d, time_ms=current_time)
 
     # Expected signal photons in this time bin. kHz * ms = photons.

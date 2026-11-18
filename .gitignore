@@ -35,6 +35,7 @@ projects/
 # Generated example outputs
 examples/*.png
 examples/*.csv
+examples/circular_validation/
 
 # OS files
 .DS_Store
